@@ -1,0 +1,2 @@
+// React Query setup
+export {};

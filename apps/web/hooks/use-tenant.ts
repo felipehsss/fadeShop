@@ -1,0 +1,2 @@
+// useTenant
+export {};

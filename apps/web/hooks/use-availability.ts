@@ -1,0 +1,2 @@
+// useAvailability
+export {};
