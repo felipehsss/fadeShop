@@ -58,7 +58,7 @@ export interface GetAvailableSlotsParams {
 // Função auxiliar: converte "HH:MM" + Date → Date completo
 // ─────────────────────────────────────────────
 function timeStringToDate(timeStr: string, baseDate: Date): Date {
-  const [hours, minutes] = timeStr.split(':').map(Number);
+  const [hours, minutes] = timeStr.split(':').map(Number) as [number, number];
   return setMilliseconds(
     setSeconds(setMinutes(setHours(new Date(baseDate), hours), minutes), 0),
     0,
