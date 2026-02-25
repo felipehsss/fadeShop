@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Image from 'next/image';
 import { MapPin, Phone, Clock, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { getOnlyAvailableSlots } from '@/lib/availability';
-import { addDays, format, setHours, setMinutes, startOfDay } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getOnlyAvailableSlots, groupSlotsByPeriod } from '@/lib/availability';
+import { addDays, format, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface BookingPageClientProps {
@@ -57,8 +59,10 @@ export function BookingPageClient({
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
 
   const selectedService = services.find((s) => s.id === selectedServiceId);
+  const selectedBarber = barbers.find((b) => b.id === selectedBarberId);
   const availableBarbers = selectedServiceId
     ? barbers.filter((b) => b.serviceIds.includes(selectedServiceId))
     : barbers;
@@ -95,14 +99,19 @@ export function BookingPageClient({
     });
   }, [selectedDate, selectedService, mockWorkingHours, tenant.settings.timezone]);
 
+  const groupedSlots = useMemo(() => groupSlotsByPeriod(availableSlots), [availableSlots]);
+
   const dateOptions = useMemo(() => {
     const today = startOfDay(new Date());
     return Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(today, i));
   }, []);
 
+  const isPhoneValid = clientPhone.trim().length >= 10;
+
   const handleConfirmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientName.trim() || !clientPhone.trim()) return;
+    setHasTriedSubmit(true);
+    if (!clientName.trim() || !clientPhone.trim() || !isPhoneValid) return;
     setIsSubmitting(true);
     await new Promise((r) => setTimeout(r, 800));
     setIsSubmitting(false);
@@ -187,6 +196,9 @@ export function BookingPageClient({
                   className="cursor-pointer border-zinc-800 bg-zinc-900 hover:border-amber-500 hover:bg-zinc-800/80 transition-all"
                   onClick={() => {
                     setSelectedServiceId(service.id);
+                    setSelectedBarberId(null);
+                    setSelectedDate(null);
+                    setSelectedSlot(null);
                     setStep('barber');
                   }}
                 >
@@ -232,23 +244,20 @@ export function BookingPageClient({
                   className="cursor-pointer border-zinc-800 bg-zinc-900 hover:border-amber-500 hover:bg-zinc-800/80 transition-all"
                   onClick={() => {
                     setSelectedBarberId(barber.id);
+                    setSelectedDate(null);
+                    setSelectedSlot(null);
                     setStep('slot');
                   }}
                 >
                   <CardContent className="p-4 flex items-center gap-4">
-                    {barber.avatarUrl ? (
-                      <Image
-                        src={barber.avatarUrl}
-                        alt={barber.name}
-                        width={48}
-                        height={48}
-                        className="rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center text-xl font-bold text-amber-400">
+                    <Avatar className="h-12 w-12">
+                      {barber.avatarUrl ? (
+                        <AvatarImage src={barber.avatarUrl} alt={barber.name} />
+                      ) : null}
+                      <AvatarFallback className="bg-zinc-800 text-amber-400 font-bold">
                         {barber.name.charAt(0)}
-                      </div>
-                    )}
+                      </AvatarFallback>
+                    </Avatar>
                     <div>
                       <p className="font-medium">{barber.name}</p>
                       {barber.bio && (
@@ -274,6 +283,19 @@ export function BookingPageClient({
             <h2 className="text-lg font-semibold mb-4">Escolha data e horário</h2>
 
             <div className="space-y-6">
+              <div className="flex flex-wrap gap-2">
+                {selectedService && (
+                  <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">
+                    {selectedService.name}
+                  </Badge>
+                )}
+                {selectedBarber && (
+                  <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">
+                    {selectedBarber.name}
+                  </Badge>
+                )}
+              </div>
+
               <div>
                 <Label className="text-sm text-muted-foreground flex items-center gap-2 mb-2">
                   <Calendar size={14} />
@@ -306,6 +328,9 @@ export function BookingPageClient({
                     );
                   })}
                 </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Fins de semana estão indisponíveis neste demo.
+                </p>
               </div>
 
               {selectedDate && (
@@ -318,24 +343,41 @@ export function BookingPageClient({
                       Nenhum horário disponível nesta data.
                     </p>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {availableSlots.map((slot) => {
-                        const isSelected = selectedSlot === slot.time;
+                    <div className="space-y-4">
+                      {([
+                        { label: 'Manhã', key: 'morning' as const },
+                        { label: 'Tarde', key: 'afternoon' as const },
+                        { label: 'Noite', key: 'evening' as const },
+                      ] as const).map(({ label, key }) => {
+                        const slots = groupedSlots[key];
+                        if (slots.length === 0) return null;
                         return (
-                          <Button
-                            key={slot.time}
-                            type="button"
-                            variant={isSelected ? 'default' : 'outline'}
-                            size="sm"
-                            className={
-                              isSelected
-                                ? 'bg-amber-500 text-black hover:bg-amber-400'
-                                : 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
-                            }
-                            onClick={() => setSelectedSlot(slot.time)}
-                          >
-                            {slot.time}
-                          </Button>
+                          <div key={key}>
+                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                              {label}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {slots.map((slot) => {
+                                const isSelected = selectedSlot === slot.time;
+                                return (
+                                  <Button
+                                    key={slot.time}
+                                    type="button"
+                                    variant={isSelected ? 'default' : 'outline'}
+                                    size="sm"
+                                    className={
+                                      isSelected
+                                        ? 'bg-amber-500 text-black hover:bg-amber-400'
+                                        : 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+                                    }
+                                    onClick={() => setSelectedSlot(slot.time)}
+                                  >
+                                    {slot.time}
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
@@ -394,6 +436,9 @@ export function BookingPageClient({
                   className="bg-zinc-900 border-zinc-700"
                   required
                 />
+                {hasTriedSubmit && !clientName.trim() && (
+                  <p className="text-xs text-red-400">Informe seu nome.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="clientPhone">WhatsApp (somente números)</Label>
@@ -406,6 +451,14 @@ export function BookingPageClient({
                   className="bg-zinc-900 border-zinc-700"
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Ex: 11999999999 (DDD + número).
+                </p>
+                {hasTriedSubmit && (!clientPhone.trim() || !isPhoneValid) && (
+                  <p className="text-xs text-red-400">
+                    Informe um WhatsApp válido (mín. 10 dígitos).
+                  </p>
+                )}
               </div>
               <Button
                 type="submit"
@@ -428,6 +481,22 @@ export function BookingPageClient({
               <p className="text-muted-foreground text-sm mb-6">
                 Enviamos os detalhes para o seu WhatsApp. Até lá!
               </p>
+              <div className="mx-auto mb-6 max-w-md rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-left text-sm text-muted-foreground">
+                <p>
+                  <span className="text-foreground font-medium">Serviço:</span>{' '}
+                  {selectedService?.name}
+                </p>
+                <p>
+                  <span className="text-foreground font-medium">Profissional:</span>{' '}
+                  {selectedBarber?.name}
+                </p>
+                <p>
+                  <span className="text-foreground font-medium">Data:</span>{' '}
+                  {selectedDate &&
+                    format(selectedDate, "EEE d/MM", { locale: ptBR })}{' '}
+                  às {selectedSlot}
+                </p>
+              </div>
               <Button
                 variant="outline"
                 className="border-zinc-700"
@@ -439,6 +508,7 @@ export function BookingPageClient({
                   setSelectedSlot(null);
                   setClientName('');
                   setClientPhone('');
+                  setHasTriedSubmit(false);
                 }}
               >
                 Fazer outro agendamento

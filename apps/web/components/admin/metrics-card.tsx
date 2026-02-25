@@ -2,13 +2,21 @@
 
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { Calendar, DollarSign, Users, Clock } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+
+const ICONS: Record<string, LucideIcon> = {
+  Calendar,
+  DollarSign,
+  Users,
+  Clock,
+};
 
 interface MetricsCardProps {
   title: string;
   value: string | number;
   subtitle?: string;
-  icon?: LucideIcon;
+  icon?: string;
   className?: string;
 }
 
@@ -16,9 +24,11 @@ export function MetricsCard({
   title,
   value,
   subtitle,
-  icon: Icon,
+  icon,
   className,
 }: MetricsCardProps) {
+  const Icon = icon ? ICONS[icon] : undefined;
+
   return (
     <Card className={cn('border-zinc-800 bg-zinc-900/50', className)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
