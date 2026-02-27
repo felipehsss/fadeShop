@@ -1,7 +1,8 @@
-import { Calendar, DollarSign, Users, Clock, TrendingUp } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { MetricsCard } from '@/components/admin/metrics-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 const MOCK_METRICS = {
   faturamentoDia: 'R$ 450,00',
@@ -76,7 +77,7 @@ export default function AdminDashboardPage() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y divide-zinc-800">
-            {MOCK_NEXT_APPOINTMENTS.map((appt, idx) => (
+            {MOCK_NEXT_APPOINTMENTS.map((appt) => (
               <div
                 key={appt.id}
                 className="flex items-center justify-between px-6 py-4 hover:bg-zinc-800/30 transition-colors"
@@ -119,8 +120,4 @@ export default function AdminDashboardPage() {
       </Card>
     </div>
   );
-}
-
-function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ');
 }

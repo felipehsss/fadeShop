@@ -80,7 +80,8 @@ export async function GET(request: Request) {
       message: 'Banco populado com sucesso!',
       nextStep: 'Acesse http://localhost:3000/b/barbearia-do-joao para ver a página pública!'
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { Clock, CheckCircle, AlertCircle, User, Scissors } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
@@ -99,10 +99,6 @@ function getStatusBadge(status: 'confirmado' | 'pendente') {
 
 export default function SchedulePage() {
   const today = new Date();
-  const statusMap = {
-    confirmado: 'confirmado' as const,
-    pendente: 'pendente' as const,
-  };
 
   return (
     <div className="max-w-7xl space-y-8">

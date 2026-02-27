@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Clock, MapPin, Phone, Globe, Save } from 'lucide-react';
 import { useState } from 'react';
 
@@ -121,14 +121,12 @@ export default function SettingsPage() {
             <div className="p-4 rounded-lg bg-zinc-800/30 border border-zinc-800 flex items-center gap-4">
               <div>
                 <p className="text-xs font-semibold text-muted-foreground mb-2">Pré-visualização do Logótipo</p>
-                <img
-                  src={formData.logoUrl}
-                  alt="Logo preview"
-                  className="h-16 w-16 rounded-lg object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64';
-                  }}
-                />
+                <Avatar className="h-16 w-16 rounded-lg ring-2 ring-zinc-950">
+                  <AvatarImage src={formData.logoUrl} alt="Logo preview" />
+                  <AvatarFallback className="bg-zinc-800 text-amber-300 font-bold">
+                    {formData.businessName.slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
               </div>
               <p className="text-xs text-muted-foreground">
                 O logótipo será exibido na página pública de agendamento

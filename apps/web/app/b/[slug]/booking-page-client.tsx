@@ -1,17 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
-import { MapPin, Phone, Clock, Calendar } from 'lucide-react';
+import { CheckCircle2, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { getOnlyAvailableSlots, groupSlotsByPeriod } from '@/lib/availability';
+import { ServiceSelector } from '@/components/booking/service-selector';
+import { BarberSelector } from '@/components/booking/barber-selector';
+import { SlotPicker } from '@/components/booking/slot-picker';
+import { ConfirmForm } from '@/components/booking/confirm-form';
+import { getAvailableSlots } from '@/lib/availability';
 import { addDays, format, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toZonedTime } from 'date-fns-tz';
 
 interface BookingPageClientProps {
   tenant: {
@@ -43,7 +45,7 @@ interface BookingPageClientProps {
 
 type BookingStep = 'service' | 'barber' | 'slot' | 'confirm' | 'success';
 
-const DAYS_AHEAD = 14;
+const DAYS_AHEAD = 7;
 const SLOT_INTERVAL = 30;
 
 export function BookingPageClient({
@@ -56,10 +58,7 @@ export function BookingPageClient({
   const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
 
   const selectedService = services.find((s) => s.id === selectedServiceId);
   const selectedBarber = barbers.find((b) => b.id === selectedBarberId);
@@ -67,51 +66,97 @@ export function BookingPageClient({
     ? barbers.filter((b) => b.serviceIds.includes(selectedServiceId))
     : barbers;
 
-  const formatPrice = (priceCents: number) =>
-    new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(priceCents / 100);
+  const effectiveBarber = selectedBarber ?? availableBarbers[0] ?? null;
 
-  // Mock: horário de trabalho do barbeiro (seg–sex 9h–18h)
-  const mockWorkingHours = selectedBarberId && selectedDate
-    ? {
-        id: 'wh-1',
-        barberId: selectedBarberId,
-        dayOfWeek: selectedDate.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6,
-        startTime: '09:00',
-        endTime: '18:00',
-        isActive: true,
-      }
-    : null;
+  const openNow = useMemo(() => {
+    const now = toZonedTime(new Date(), tenant.settings.timezone);
+    const day = now.getDay();
+    const hour = now.getHours();
+    const isWeekday = day >= 1 && day <= 5;
+    return isWeekday && hour >= 9 && hour < 18;
+  }, [tenant.settings.timezone]);
 
-  const availableSlots = useMemo(() => {
-    if (!selectedDate || !selectedService || !mockWorkingHours) return [];
-    return getOnlyAvailableSlots({
-      targetDate: selectedDate,
-      workingHours: mockWorkingHours,
-      existingAppointments: [],
-      scheduleBlocks: [],
-      serviceDurationMin: selectedService.durationMin,
-      slotIntervalMin: SLOT_INTERVAL,
-      timezone: tenant.settings.timezone,
-      leadHours: 0,
-    });
-  }, [selectedDate, selectedService, mockWorkingHours, tenant.settings.timezone]);
+  function getMockWorkingHours(date: Date, barberId: string | null) {
+    const dayOfWeek = date.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    if (!barberId || isWeekend) return null;
+    return {
+      id: `wh-${barberId}-${dayOfWeek}`,
+      barberId,
+      dayOfWeek,
+      startTime: '09:00',
+      endTime: '18:00',
+      isActive: true,
+    };
+  }
 
-  const groupedSlots = useMemo(() => groupSlotsByPeriod(availableSlots), [availableSlots]);
+  function getMockScheduleBlocks(date: Date, barberId: string) {
+    const startsAt = new Date(date);
+    startsAt.setHours(12, 0, 0, 0);
+    const endsAt = new Date(date);
+    endsAt.setHours(13, 0, 0, 0);
+    return [
+      {
+        id: `block-${barberId}-${date.toISOString()}`,
+        barberId,
+        startsAt,
+        endsAt,
+        reason: 'Pausa',
+        status: 'approved' as const,
+      },
+    ];
+  }
 
   const dateOptions = useMemo(() => {
     const today = startOfDay(new Date());
     return Array.from({ length: DAYS_AHEAD }, (_, i) => addDays(today, i));
   }, []);
 
-  const isPhoneValid = clientPhone.trim().length >= 10;
+  const dayOptions = useMemo(() => {
+    if (!selectedService || !effectiveBarber) {
+      return dateOptions.map((date) => ({ date, hasAvailability: false }));
+    }
 
-  const handleConfirmSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setHasTriedSubmit(true);
-    if (!clientName.trim() || !clientPhone.trim() || !isPhoneValid) return;
+    return dateOptions.map((date) => {
+      const workingHours = getMockWorkingHours(date, effectiveBarber.id);
+      const slots = getAvailableSlots({
+        targetDate: date,
+        workingHours,
+        existingAppointments: [],
+        scheduleBlocks: workingHours ? getMockScheduleBlocks(date, effectiveBarber.id) : [],
+        serviceDurationMin: selectedService.durationMin,
+        slotIntervalMin: SLOT_INTERVAL,
+        timezone: tenant.settings.timezone,
+        leadHours: 0,
+      });
+
+      return { date, hasAvailability: slots.some((s) => s.isAvailable) };
+    });
+  }, [dateOptions, effectiveBarber, selectedService, tenant.settings.timezone]);
+
+  const slotsForSelectedDate = useMemo(() => {
+    if (!selectedService || !selectedDate || !effectiveBarber) return [];
+    const workingHours = getMockWorkingHours(selectedDate, effectiveBarber.id);
+    return getAvailableSlots({
+      targetDate: selectedDate,
+      workingHours,
+      existingAppointments: [],
+      scheduleBlocks: workingHours ? getMockScheduleBlocks(selectedDate, effectiveBarber.id) : [],
+      serviceDurationMin: selectedService.durationMin,
+      slotIntervalMin: SLOT_INTERVAL,
+      timezone: tenant.settings.timezone,
+      leadHours: 0,
+    });
+  }, [effectiveBarber, selectedDate, selectedService, tenant.settings.timezone]);
+
+  const totalPriceCents = selectedService?.priceCents ?? 0;
+
+  const handleConfirmSubmit = async (payload: {
+    name: string;
+    phone: string;
+    email?: string;
+  }) => {
+    void payload;
     setIsSubmitting(true);
     await new Promise((r) => setTimeout(r, 800));
     setIsSubmitting(false);
@@ -120,402 +165,289 @@ export function BookingPageClient({
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="border-b border-zinc-800 bg-zinc-900 px-4 py-6">
-        <div className="mx-auto max-w-2xl flex items-center gap-4">
-          {tenant.settings.logoUrl && (
-            <Image
-              src={tenant.settings.logoUrl}
-              alt={tenant.name}
-              width={56}
-              height={56}
-              className="rounded-full object-cover"
-            />
-          )}
-          <div>
-            <h1 className="text-xl font-bold">{tenant.name}</h1>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-zinc-400">
-              {tenant.settings.address && (
-                <span className="flex items-center gap-1">
-                  <MapPin size={12} />
-                  {tenant.settings.address}
-                </span>
-              )}
-              {tenant.settings.phone && (
-                <span className="flex items-center gap-1">
-                  <Phone size={12} />
-                  {tenant.settings.phone}
-                </span>
-              )}
-            </div>
+      <header className="relative border-b border-zinc-800">
+        <div className="relative h-44 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-amber-500/10" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
+        </div>
+
+        <div className="mx-auto max-w-2xl px-4 pb-6">
+          <div className="-mt-10 flex items-end justify-between gap-4">
+            <Avatar className="h-20 w-20 ring-4 ring-zinc-950 shadow-xl">
+              {tenant.settings.logoUrl ? (
+                <AvatarImage src={tenant.settings.logoUrl} alt={tenant.name} />
+              ) : null}
+              <AvatarFallback className="bg-zinc-900 text-amber-300 text-xl font-bold">
+                {tenant.name.slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+
+            <Badge
+              className={
+                openNow
+                  ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-200'
+                  : 'border-zinc-700 bg-zinc-900/60 text-zinc-300'
+              }
+              variant="outline"
+            >
+              {openNow ? 'Aberto agora' : 'Fechado agora'}
+            </Badge>
+          </div>
+
+          <div className="mt-4">
+            <h1 className="text-xl font-bold leading-tight">{tenant.name}</h1>
+            {tenant.settings.address ? (
+              <div className="mt-2 flex items-start gap-2 text-sm text-zinc-400">
+                <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <p className="leading-snug">{tenant.settings.address}</p>
+              </div>
+            ) : null}
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="mb-6 flex items-center gap-2">
           {(['service', 'barber', 'slot', 'confirm'] as BookingStep[]).map(
-            (s, index) => {
-              const steps: BookingStep[] = ['service', 'barber', 'slot', 'confirm'];
-              const currentIndex = steps.indexOf(step);
-              const stepIndex = index;
-              const isCompleted = stepIndex < currentIndex;
-              const isCurrent = stepIndex === currentIndex;
+            (s, idx) => {
+              const stepsOrder: BookingStep[] = ['service', 'barber', 'slot', 'confirm'];
+              const currentIndex = stepsOrder.indexOf(step);
+              const index = stepsOrder.indexOf(s);
+              const isCompleted = index !== -1 && index < currentIndex;
+              const isCurrent = index !== -1 && index === currentIndex;
+
               return (
-                <div key={s} className="flex items-center flex-1">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                <div key={s} className="flex items-center gap-2">
+                  <span
+                    className={
                       isCompleted
-                        ? 'bg-amber-500 text-black'
+                        ? 'h-8 w-8 rounded-full bg-amber-500 text-black flex items-center justify-center text-sm font-bold'
                         : isCurrent
-                          ? 'bg-zinc-100 text-black'
-                          : 'bg-zinc-800 text-zinc-500'
-                    }`}
+                          ? 'h-8 w-8 rounded-full bg-zinc-100 text-black flex items-center justify-center text-sm font-bold'
+                          : 'h-8 w-8 rounded-full bg-zinc-900 text-zinc-500 border border-zinc-800 flex items-center justify-center text-sm font-bold'
+                    }
                   >
-                    {index + 1}
-                  </div>
-                  {index < 3 && (
-                    <div
-                      className={`flex-1 h-0.5 mx-2 transition-colors ${
-                        isCompleted ? 'bg-amber-500' : 'bg-zinc-800'
-                      }`}
-                    />
-                  )}
+                    {idx + 1}
+                  </span>
+                  <span
+                    className={
+                      isCurrent
+                        ? 'text-sm font-semibold text-zinc-100'
+                        : 'text-sm text-zinc-500'
+                    }
+                  >
+                    {s === 'service'
+                      ? 'Serviço'
+                      : s === 'barber'
+                        ? 'Barbeiro'
+                        : s === 'slot'
+                          ? 'Data/Hora'
+                          : 'Confirmar'}
+                  </span>
+                  {idx < 3 ? (
+                    <span className="mx-1 h-px w-6 bg-zinc-800" />
+                  ) : null}
                 </div>
               );
             },
           )}
         </div>
 
-        {step === 'service' && (
-          <div>
-            <h2 className="text-lg font-semibold mb-4">Escolha o serviço</h2>
-            <div className="space-y-3">
-              {services.map((service) => (
-                <Card
-                  key={service.id}
-                  className="cursor-pointer border-zinc-800 bg-zinc-900 hover:border-amber-500 hover:bg-zinc-800/80 transition-all"
-                  onClick={() => {
-                    setSelectedServiceId(service.id);
-                    setSelectedBarberId(null);
-                    setSelectedDate(null);
-                    setSelectedSlot(null);
-                    setStep('barber');
-                  }}
+        {step === 'service' ? (
+          <Card className="border-zinc-800 bg-zinc-900/40">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Step 1: Serviço</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-zinc-400">
+                Escolha o serviço para ver os profissionais e horários disponíveis.
+              </p>
+              <ServiceSelector
+                services={services}
+                selectedServiceId={selectedServiceId}
+                onSelect={(serviceId) => {
+                  setSelectedServiceId(serviceId);
+                  setSelectedBarberId(null);
+                  setSelectedDate(null);
+                  setSelectedSlot(null);
+                  setStep('barber');
+                }}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {step === 'barber' ? (
+          <Card className="border-zinc-800 bg-zinc-900/40">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-4">
+                <CardTitle className="text-lg">Step 2: Barbeiro</CardTitle>
+                <Button
+                  variant="ghost"
+                  className="h-9 rounded-xl px-3 text-zinc-400 hover:text-zinc-100"
+                  onClick={() => setStep('service')}
                 >
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium text-foreground">{service.name}</p>
-                        {service.description && (
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {service.description}
-                          </p>
-                        )}
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground mt-2">
-                          <Clock size={10} />
-                          {service.durationMin} min
-                        </span>
-                      </div>
-                      <span className="text-amber-400 font-bold">
-                        {formatPrice(service.priceCents)}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {step === 'barber' && (
-          <div>
-            <Button
-              variant="ghost"
-              className="text-muted-foreground hover:text-foreground mb-4 -ml-2"
-              onClick={() => setStep('service')}
-            >
-              ← Voltar
-            </Button>
-            <h2 className="text-lg font-semibold mb-4">Escolha o profissional</h2>
-            <div className="space-y-3">
-              {availableBarbers.map((barber) => (
-                <Card
-                  key={barber.id}
-                  className="cursor-pointer border-zinc-800 bg-zinc-900 hover:border-amber-500 hover:bg-zinc-800/80 transition-all"
-                  onClick={() => {
-                    setSelectedBarberId(barber.id);
-                    setSelectedDate(null);
-                    setSelectedSlot(null);
-                    setStep('slot');
-                  }}
-                >
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <Avatar className="h-12 w-12">
-                      {barber.avatarUrl ? (
-                        <AvatarImage src={barber.avatarUrl} alt={barber.name} />
-                      ) : null}
-                      <AvatarFallback className="bg-zinc-800 text-amber-400 font-bold">
-                        {barber.name.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">{barber.name}</p>
-                      {barber.bio && (
-                        <p className="text-sm text-muted-foreground">{barber.bio}</p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {step === 'slot' && (
-          <div>
-            <Button
-              variant="ghost"
-              className="text-muted-foreground hover:text-foreground mb-4 -ml-2"
-              onClick={() => setStep('barber')}
-            >
-              ← Voltar
-            </Button>
-            <h2 className="text-lg font-semibold mb-4">Escolha data e horário</h2>
-
-            <div className="space-y-6">
+                  Voltar
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                {selectedService && (
+                {selectedService ? (
                   <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">
                     {selectedService.name}
                   </Badge>
-                )}
-                {selectedBarber && (
+                ) : null}
+              </div>
+              <BarberSelector
+                barbers={availableBarbers.map((b) => ({
+                  id: b.id,
+                  name: b.name,
+                  bio: b.bio,
+                  avatarUrl: b.avatarUrl,
+                }))}
+                selectedBarberId={selectedBarberId}
+                onSelect={(barberId) => {
+                  setSelectedBarberId(barberId);
+                  setSelectedDate(null);
+                  setSelectedSlot(null);
+                  setStep('slot');
+                }}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {step === 'slot' ? (
+          <Card className="border-zinc-800 bg-zinc-900/40">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-4">
+                <CardTitle className="text-lg">Step 3: Data/Hora</CardTitle>
+                <Button
+                  variant="ghost"
+                  className="h-9 rounded-xl px-3 text-zinc-400 hover:text-zinc-100"
+                  onClick={() => setStep('barber')}
+                >
+                  Voltar
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex flex-wrap gap-2">
+                {selectedService ? (
                   <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">
-                    {selectedBarber.name}
+                    {selectedService.name}
                   </Badge>
-                )}
+                ) : null}
+                <Badge variant="secondary" className="bg-zinc-800 text-zinc-200">
+                  {selectedBarber ? selectedBarber.name : 'Qualquer profissional'}
+                </Badge>
               </div>
 
-              <div>
-                <Label className="text-sm text-muted-foreground flex items-center gap-2 mb-2">
-                  <Calendar size={14} />
-                  Data
-                </Label>
-                <div className="flex flex-wrap gap-2">
-                  {dateOptions.map((date) => {
-                    const isSelected =
-                      selectedDate?.toDateString() === date.toDateString();
-                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                    return (
-                      <Button
-                        key={date.toISOString()}
-                        type="button"
-                        variant={isSelected ? 'default' : 'outline'}
-                        size="sm"
-                        className={
-                          isSelected
-                            ? 'bg-amber-500 text-black hover:bg-amber-400'
-                            : 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
-                        }
-                        disabled={isWeekend}
-                        onClick={() => {
-                          setSelectedDate(date);
-                          setSelectedSlot(null);
-                        }}
-                      >
-                        {format(date, 'EEE d/MM', { locale: ptBR })}
-                      </Button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Fins de semana estão indisponíveis neste demo.
-                </p>
-              </div>
-
-              {selectedDate && (
-                <div>
-                  <Label className="text-sm text-muted-foreground mb-2 block">
-                    Horários disponíveis
-                  </Label>
-                  {availableSlots.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Nenhum horário disponível nesta data.
-                    </p>
-                  ) : (
-                    <div className="space-y-4">
-                      {([
-                        { label: 'Manhã', key: 'morning' as const },
-                        { label: 'Tarde', key: 'afternoon' as const },
-                        { label: 'Noite', key: 'evening' as const },
-                      ] as const).map(({ label, key }) => {
-                        const slots = groupedSlots[key];
-                        if (slots.length === 0) return null;
-                        return (
-                          <div key={key}>
-                            <p className="text-xs font-medium text-muted-foreground mb-2">
-                              {label}
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {slots.map((slot) => {
-                                const isSelected = selectedSlot === slot.time;
-                                return (
-                                  <Button
-                                    key={slot.time}
-                                    type="button"
-                                    variant={isSelected ? 'default' : 'outline'}
-                                    size="sm"
-                                    className={
-                                      isSelected
-                                        ? 'bg-amber-500 text-black hover:bg-amber-400'
-                                        : 'border-zinc-700 text-zinc-300 hover:bg-zinc-800'
-                                    }
-                                    onClick={() => setSelectedSlot(slot.time)}
-                                  >
-                                    {slot.time}
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+              <SlotPicker
+                days={dayOptions}
+                selectedDate={selectedDate}
+                onSelectDate={(date) => {
+                  setSelectedDate(date);
+                  setSelectedSlot(null);
+                }}
+                slots={slotsForSelectedDate.map((s) => ({
+                  time: s.time,
+                  isAvailable: s.isAvailable,
+                }))}
+                selectedTime={selectedSlot}
+                onSelectTime={(time) => setSelectedSlot(time)}
+              />
 
               <Button
-                className="w-full bg-amber-500 text-black hover:bg-amber-400"
+                className="w-full h-12 rounded-xl bg-amber-500 text-black hover:bg-amber-400 text-base font-semibold"
                 disabled={!selectedDate || !selectedSlot}
                 onClick={() => setStep('confirm')}
               >
                 Continuar
               </Button>
-            </div>
-          </div>
-        )}
+            </CardContent>
+          </Card>
+        ) : null}
 
-        {step === 'confirm' && (
-          <div>
-            <Button
-              variant="ghost"
-              className="text-muted-foreground hover:text-foreground mb-4 -ml-2"
-              onClick={() => setStep('slot')}
-            >
-              ← Voltar
-            </Button>
-            <h2 className="text-lg font-semibold mb-4">Confirme seus dados</h2>
-
-            <Card className="border-zinc-800 bg-zinc-900 mb-6">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Resumo do agendamento</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1 text-sm text-muted-foreground">
-                <p>
-                  <span className="text-foreground font-medium">Serviço:</span>{' '}
-                  {selectedService?.name} —{' '}
-                  {selectedService && formatPrice(selectedService.priceCents)}
-                </p>
-                <p>
-                  <span className="text-foreground font-medium">Data:</span>{' '}
-                  {selectedDate && format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR })}{' '}
-                  às {selectedSlot}
-                </p>
-              </CardContent>
-            </Card>
-
-            <form onSubmit={handleConfirmSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="clientName">Nome completo</Label>
-                <Input
-                  id="clientName"
-                  placeholder="Seu nome"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  className="bg-zinc-900 border-zinc-700"
-                  required
-                />
-                {hasTriedSubmit && !clientName.trim() && (
-                  <p className="text-xs text-red-400">Informe seu nome.</p>
-                )}
+        {step === 'confirm' && selectedService && selectedDate && selectedSlot ? (
+          <Card className="border-zinc-800 bg-zinc-900/40">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-4">
+                <CardTitle className="text-lg">Step 4: Confirmar</CardTitle>
+                <Button
+                  variant="ghost"
+                  className="h-9 rounded-xl px-3 text-zinc-400 hover:text-zinc-100"
+                  onClick={() => setStep('slot')}
+                >
+                  Voltar
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="clientPhone">WhatsApp (somente números)</Label>
-                <Input
-                  id="clientPhone"
-                  type="tel"
-                  placeholder="11999999999"
-                  value={clientPhone}
-                  onChange={(e) => setClientPhone(e.target.value.replace(/\D/g, ''))}
-                  className="bg-zinc-900 border-zinc-700"
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Ex: 11999999999 (DDD + número).
-                </p>
-                {hasTriedSubmit && (!clientPhone.trim() || !isPhoneValid) && (
-                  <p className="text-xs text-red-400">
-                    Informe um WhatsApp válido (mín. 10 dígitos).
-                  </p>
-                )}
-              </div>
-              <Button
-                type="submit"
-                className="w-full bg-amber-500 text-black hover:bg-amber-400"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? 'Agendando...' : 'Confirmar agendamento'}
-              </Button>
-            </form>
-          </div>
-        )}
+            </CardHeader>
+            <CardContent>
+              <ConfirmForm
+                serviceName={selectedService.name}
+                barberName={selectedBarber ? selectedBarber.name : 'Qualquer profissional'}
+                date={selectedDate}
+                time={selectedSlot}
+                totalPriceCents={totalPriceCents}
+                isSubmitting={isSubmitting}
+                onConfirm={handleConfirmSubmit}
+              />
+            </CardContent>
+          </Card>
+        ) : null}
 
-        {step === 'success' && (
-          <Card className="border-emerald-800 bg-emerald-950/30">
+        {step === 'success' ? (
+          <Card className="border-emerald-800/50 bg-emerald-950/30">
             <CardContent className="pt-6 text-center">
-              <div className="text-4xl mb-4">✓</div>
-              <h2 className="text-xl font-semibold text-emerald-400 mb-2">
+              <div className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <h2 className="text-xl font-semibold text-emerald-200 mb-1">
                 Agendamento confirmado!
               </h2>
-              <p className="text-muted-foreground text-sm mb-6">
-                Enviamos os detalhes para o seu WhatsApp. Até lá!
+              <p className="text-zinc-400 text-sm mb-6">
+                Pronto. Agora é só aparecer no horário combinado.
               </p>
-              <div className="mx-auto mb-6 max-w-md rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-left text-sm text-muted-foreground">
-                <p>
-                  <span className="text-foreground font-medium">Serviço:</span>{' '}
-                  {selectedService?.name}
+
+              <div className="mx-auto mb-6 max-w-md rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 text-left text-sm text-zinc-300">
+                <p className="flex items-center justify-between gap-2">
+                  <span className="text-zinc-400">Serviço</span>
+                  <span className="font-semibold">{selectedService?.name}</span>
                 </p>
-                <p>
-                  <span className="text-foreground font-medium">Profissional:</span>{' '}
-                  {selectedBarber?.name}
+                <p className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-zinc-400">Profissional</span>
+                  <span className="font-semibold">
+                    {selectedBarber ? selectedBarber.name : 'Qualquer profissional'}
+                  </span>
                 </p>
-                <p>
-                  <span className="text-foreground font-medium">Data:</span>{' '}
-                  {selectedDate &&
-                    format(selectedDate, "EEE d/MM", { locale: ptBR })}{' '}
-                  às {selectedSlot}
+                <p className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-zinc-400">Quando</span>
+                  <span className="font-semibold">
+                    {selectedDate ? format(selectedDate, "EEE d/MM", { locale: ptBR }) : ''} às{' '}
+                    {selectedSlot ?? ''}
+                  </span>
                 </p>
               </div>
+
               <Button
                 variant="outline"
-                className="border-zinc-700"
+                className="border-zinc-700 rounded-xl"
                 onClick={() => {
                   setStep('service');
                   setSelectedServiceId(null);
                   setSelectedBarberId(null);
                   setSelectedDate(null);
                   setSelectedSlot(null);
-                  setClientName('');
-                  setClientPhone('');
-                  setHasTriedSubmit(false);
                 }}
               >
                 Fazer outro agendamento
               </Button>
             </CardContent>
           </Card>
-        )}
+        ) : null}
       </main>
     </div>
   );

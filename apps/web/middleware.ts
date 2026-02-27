@@ -15,12 +15,6 @@ export function middleware(request: NextRequest) {
   // Rotas de admin e super-admin são protegidas client-side pelo AuthProvider
   // O middleware aqui serve apenas para garantir rotas públicas corretas
 
-  const isPublicPath =
-    pathname.startsWith('/b/') ||
-    pathname === '/' ||
-    pathname === '/login' ||
-    pathname.startsWith('/api/webhooks');
-
   const isAdminPath =
     pathname.startsWith('/admin') || pathname.startsWith('/super-admin');
 
