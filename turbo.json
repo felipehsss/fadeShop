@@ -4,7 +4,12 @@
   "globalEnv": [
     "FIREBASE_PROJECT_ID",
     "FIREBASE_CLIENT_EMAIL",
-    "FIREBASE_PRIVATE_KEY"
+    "FIREBASE_PRIVATE_KEY",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_PRICE_STARTER",
+    "STRIPE_PRICE_PRO",
+    "STRIPE_PRICE_ELITE"
   ],
   "tasks": {
     "build": {

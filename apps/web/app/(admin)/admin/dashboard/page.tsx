@@ -20,19 +20,15 @@ const MOCK_NEXT_APPOINTMENTS = [
 
 export default function AdminDashboardPage() {
   return (
-    <div className="max-w-7xl space-y-8">
-      {/* Header Section */}
+    <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">
-          Olá, bem-vindo de volta! 👋
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Resumo do dia</h1>
         <p className="text-muted-foreground mt-2">
-          Aqui está o resumo da sua barbearia today.
+          Aqui está o resumo da sua barbearia hoje.
         </p>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricsCard
           title="Faturamento do Dia"
           value={MOCK_METRICS.faturamentoDia}
@@ -59,10 +55,9 @@ export default function AdminDashboardPage() {
         />
       </div>
 
-      {/* Agenda Card */}
       <Card className="border-zinc-800 bg-zinc-900/50 overflow-hidden">
         <CardHeader className="border-b border-zinc-800">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
             <div>
               <CardTitle className="text-lg">Agenda de Hoje</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
@@ -80,17 +75,15 @@ export default function AdminDashboardPage() {
             {MOCK_NEXT_APPOINTMENTS.map((appt) => (
               <div
                 key={appt.id}
-                className="flex items-center justify-between px-6 py-4 hover:bg-zinc-800/30 transition-colors"
+                className="flex items-center justify-between px-4 py-3 hover:bg-zinc-800/30 transition-colors"
               >
                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                  {/* Time Badge */}
                   <div className="flex-shrink-0 text-center">
                     <p className="text-sm font-bold text-amber-400">
                       {appt.time}
                     </p>
                   </div>
 
-                  {/* Appointment Details */}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">
                       {appt.service}
@@ -101,14 +94,13 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                {/* Status Badge */}
                 <Badge
                   variant={appt.status === 'confirmado' ? 'secondary' : 'outline'}
                   className={cn(
                     appt.status === 'confirmado'
                       ? 'bg-emerald-900/30 text-emerald-300 border-emerald-800'
                       : 'border-amber-700 text-amber-300 bg-amber-900/20',
-                    'ml-4 flex-shrink-0'
+                    'ml-4 flex-shrink-0 text-xs'
                   )}
                 >
                   {appt.status}

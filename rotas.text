@@ -1,0 +1,57 @@
+1. Rotas Públicas (Não exigem login)
+Estas são as páginas que qualquer pessoa pode acessar na internet.
+
+http://localhost:3000/
+
+O que é: A Landing Page principal do seu SaaS. É aqui que você vai vender o sistema para os donos de barbearia.
+
+http://localhost:3000/b/teste (substitua "teste" por qualquer slug/nome)
+
+O que é: A página pública da barbearia específica. Mostra o logotipo da barbearia, os serviços, os barbeiros disponíveis e inicia o fluxo de agendamento. É a visão do "cliente final" que quer cortar o cabelo.
+
+http://localhost:3000/b/teste/agendar
+
+O que é: A tela específica onde o cliente final finaliza o fluxo de agendamento (escolhe horário e preenche dados).
+
+🔐 2. Autenticação
+http://localhost:3000/login
+
+O que é: Tela de login do sistema. É aqui que o Dono da Barbearia, o Barbeiro ou o Super Admin entram. O sistema redireciona automaticamente para o painel correto dependendo do tipo de usuário (role).
+
+💈 3. Painel do Dono da Barbearia / Barbeiros (Tenant Admin)
+Estas rotas exigem que você esteja logado com um usuário do tipo tenant_admin ou barber.
+
+http://localhost:3000/admin/dashboard
+
+O que é: O painel principal com os cards de métricas (Faturamento do dia, Agendamentos, Novos Clientes) e a lista rápida dos próximos clientes.
+
+http://localhost:3000/admin/schedule
+
+O que é: A visualização completa da agenda. Mostra os agendamentos do dia ordenados por hora, com opção de confirmar ou cancelar os horários marcados. (O Barbeiro comum normalmente só acessa essa tela).
+
+http://localhost:3000/admin/services
+
+O que é: Tela para cadastrar, editar e excluir os serviços oferecidos (Corte, Barba, etc.), definindo preço e duração.
+
+http://localhost:3000/admin/barbers
+
+O que é: Tela para a gestão da equipe. Onde o dono cadastra seus barbeiros, adiciona a foto deles e os vincula aos serviços que eles sabem fazer.
+
+http://localhost:3000/admin/settings
+
+O que é: Configurações da barbearia (nome, endereço, fuso horário, logotipo, etc.).
+
+👑 4. Painel do Dono do SaaS (Super Admin)
+Estas rotas exigem que você esteja logado com um usuário com a role super_admin. É a sua visão como dono do sistema fadeShop.
+
+http://localhost:3000/super-admin/dashboard
+
+O que é: Painel geral do seu negócio SaaS. (Ex: Quantas barbearias assinaram o seu sistema).
+
+http://localhost:3000/super-admin/tenants
+
+O que é: Lista de todos os seus clientes (todas as barbearias cadastradas no sistema).
+
+http://localhost:3000/super-admin/plans
+
+O que é: Gestão dos planos de assinatura do sistema (ex: Plano Básico, Plano Pro)

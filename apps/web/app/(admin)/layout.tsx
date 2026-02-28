@@ -1,5 +1,6 @@
-import { Sidebar } from '@/components/admin/sidebar';
-import { Header } from '@/components/admin/header';
+import { AuthProvider } from '@/providers/auth-provider';
+import { MobileHeader } from '@/components/admin/mobile-header';
+import { MobileBottomNav } from '@/components/admin/mobile-bottom-nav';
 
 export default function AdminLayout({
   children,
@@ -7,18 +8,14 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar */}
-      <Sidebar />
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <Header />
-
-        {/* Scrollable content area */}
-        <main className="flex-1 overflow-y-auto p-8">{children}</main>
+    <AuthProvider>
+      <div className="min-h-screen bg-background">
+        <MobileHeader />
+        <main className="mx-auto w-full max-w-3xl px-4 py-5 pb-28">
+          {children}
+        </main>
+        <MobileBottomNav />
       </div>
-    </div>
+    </AuthProvider>
   );
 }
