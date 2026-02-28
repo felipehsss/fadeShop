@@ -11,7 +11,7 @@ let adminApp: App;
 
 function getAdminApp(): App {
   if (getApps().length > 0) {
-    return getApps()[0];
+    return getApps()[0]!;
   }
 
   // Em produção: usar variáveis de ambiente
